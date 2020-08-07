@@ -8,6 +8,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import wget
+from sklearn.preprocessing import MinMaxScaler
 
 
 def download_csv(url, save_location):
@@ -82,6 +83,25 @@ def interpolate_cases(unique, counts):
     return complete_date_array
 
 
+def normalize_data(to_normalize):
+    scaler = MinMaxScaler(feature_range=(-1, 1))
+    normalized_data = scaler.fit_transform(to_normalize.reshape(-1, 1))
+    return normalized_data
+
+
+def create_tensors(normalized_train_data):
+    train_window = 7  # 7 days in a week
+    normalized_train_data = torch.FloatTensor(normalized_train_data).view(-1)
+
+    inout_seq = []
+    L = len(normalized_train_data)
+    for i in range(L - train_window):
+        train_seq = normalized_train_data[i : i + train_window]
+        train_label = normalized_train_data[i + train_window : i + train_window + 1]
+        inout_seq.append((train_seq, train_label))
+    return inout_seq
+
+
 def plot(unique_elements, counts_elements):
     plt.plot(unique_elements, counts_elements)
     plt.show()
@@ -91,12 +111,17 @@ def main():
     url = "https://data.ontario.ca/dataset/f4112442-bdc8-45d2-be3c-12efae72fb27/resource/455fd63b-603d-4608-8216-7d8647f43350/download/conposcovidloc.csv"
     save_location = os.getcwd() + "/temp/conposcovidloc.csv"
 
+    test_size = 15
+
     download_csv(url, save_location)
     unique, counts = process_csv(save_location)
     data_array = interpolate_cases(unique, counts)
-    for i in range(len(data_array[0])):
-        print(data_array[0][i], data_array[1][i])
     plot(data_array[0], data_array[1])
+    print()
+    print(np.array(data_array[1][:-test_size]))
+    normalized_train_data = normalize_data(np.array(data_array[1][:-test_size]))
+    inout_seq = create_tensors(normalized_train_data)
+    print(inout_seq)
 
 
 if __name__ == "__main__":
