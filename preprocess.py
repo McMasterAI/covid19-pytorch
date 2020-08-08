@@ -83,14 +83,49 @@ def interpolate_cases(unique, counts):
     return complete_date_array
 
 
-def normalize_data(to_normalize):
-    scaler = MinMaxScaler(feature_range=(-1, 1))
+# Global scaler variable so the normalize and denormalize functions can access it easily.
+scaler = MinMaxScaler(feature_range=(-1, 1))
+
+
+def normalize_data(to_normalize, reset_scaler=False):
+    """Normalizes data with the global scaler on a scale of -1 to 1.
+
+    Args:
+        to_normalize (numpy.ndarray): Numpy array of values to be normalized.
+        reset_scaler (bool, optional): If true, reset the scaler. Defaults to False.
+
+    Returns:
+        numpy.ndarray: Normalized data.
+    """
     normalized_data = scaler.fit_transform(to_normalize.reshape(-1, 1))
     return normalized_data
 
 
-def create_tensors(normalized_train_data):
-    train_window = 7  # 7 days in a week
+def denormalize_data(to_denormalize):
+    """Denormalizes previously normalized data using the global scaler.
+
+    Args:
+        to_denormalize (numpy.ndarray): Numpy array containing normalized values.
+
+    Returns:
+        numpy.ndarray: Denormalized data.
+    """
+    denormalized_data = scaler.inverse_transform(
+        np.array(to_denormalize.reshape(-1, 1))
+    )
+    return denormalized_data
+
+
+def create_tensors(normalized_train_data, train_window):
+    """Creates tensors that are used for training the LSTM.
+
+    Args:
+        normalized_train_data (numpy.ndarray): Numpy array of normalized training data.
+        train_window (int): Window to be used for training.
+
+    Returns:
+        [torch.Tensor]: in out sequence used for training the LSTM.
+    """
     normalized_train_data = torch.FloatTensor(normalized_train_data).view(-1)
 
     inout_seq = []
@@ -103,6 +138,12 @@ def create_tensors(normalized_train_data):
 
 
 def plot(unique_elements, counts_elements):
+    """Simple plot for testing preprocessing.
+
+    Args:
+        unique_elements ([str]): String list of dates.
+        counts_elements ([int]): Int list of confirmed COVID-19 cases.
+    """
     plt.plot(unique_elements, counts_elements)
     plt.show()
 
@@ -111,16 +152,15 @@ def main():
     url = "https://data.ontario.ca/dataset/f4112442-bdc8-45d2-be3c-12efae72fb27/resource/455fd63b-603d-4608-8216-7d8647f43350/download/conposcovidloc.csv"
     save_location = os.getcwd() + "/temp/conposcovidloc.csv"
 
-    test_size = 15
-
     download_csv(url, save_location)
     unique, counts = process_csv(save_location)
     data_array = interpolate_cases(unique, counts)
     plot(data_array[0], data_array[1])
     print()
-    print(np.array(data_array[1][:-test_size]))
-    normalized_train_data = normalize_data(np.array(data_array[1][:-test_size]))
-    inout_seq = create_tensors(normalized_train_data)
+    print(np.array(data_array[1]))
+    normalized_data = normalize_data(np.array(data_array[1]))
+    train_window = 7
+    inout_seq = create_tensors(normalized_data, train_window)
     print(inout_seq)
 
 
