@@ -186,7 +186,17 @@ def main():
     download_csv(url, save_location)
     unique, counts = process_csv(save_location)
     data_array = interpolate_cases(unique, counts)
-    plot(data_array[0], data_array[1])
+
+    # demonstrate rolling mean
+    plt.close()
+    plt.plot(data_array[0], data_array[1], label="counts")
+    plt.plot(
+        data_array[0], rolling_mean(data_array[1], window=7), label="means",
+    )
+    plt.title("rolling mean (window=7)")
+    plt.legend()
+    plt.show()
+
     print()
     print(np.array(data_array[1]))
     normalized_data = normalize_data(np.array(data_array[1]))
