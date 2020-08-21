@@ -137,6 +137,37 @@ def create_tensors(normalized_train_data, train_window):
     return inout_seq
 
 
+def rolling_mean(data, window):
+    """
+    Args:
+        data (list): List of numbers to compute the rolling mean
+        window (int): Size of the rolling mean window (note that for the first
+            few entries in data where the number of elements before the current
+            element is less than window, only those existing elements shall be
+            considered).
+
+    Returns:
+        list: A list of the rolling mean numbers
+    """
+    if len(data) <= 0:
+        return []
+
+    cumsums, means = [data[0]], [data[0]]
+    for x in data[1:]:
+        new_sum = cumsums[-1] + x
+        cumsums.append(new_sum)
+
+        new_mean = new_sum
+        if len(cumsums) <= window:
+            new_mean /= len(cumsums)
+        else:
+            new_mean -= cumsums[-(window + 1)]
+            new_mean /= window
+        means.append(new_mean)
+
+    return means
+
+
 def plot(unique_elements, counts_elements):
     """Simple plot for testing preprocessing.
 
@@ -155,7 +186,17 @@ def main():
     download_csv(url, save_location)
     unique, counts = process_csv(save_location)
     data_array = interpolate_cases(unique, counts)
-    plot(data_array[0], data_array[1])
+
+    # demonstrate rolling mean
+    plt.close()
+    plt.plot(data_array[0], data_array[1], label="counts")
+    plt.plot(
+        data_array[0], rolling_mean(data_array[1], window=7), label="means",
+    )
+    plt.title("rolling mean (window=7)")
+    plt.legend()
+    plt.show()
+
     print()
     print(np.array(data_array[1]))
     normalized_data = normalize_data(np.array(data_array[1]))
