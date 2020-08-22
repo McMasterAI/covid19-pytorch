@@ -108,7 +108,8 @@ def main():
             pp.download_csv(url, csv_location)
         unique, counts = pp.process_csv(csv_location)
         data_array = pp.interpolate_cases(unique, counts)
-        normalized_data = pp.normalize_data(np.array(data_array[1]))
+        scaler = pp.create_scaler()
+        normalized_data = pp.normalize_data(np.array(data_array[1]), scaler)
         train_window = 7
         inout_seq = pp.create_tensors(normalized_data, train_window)
 
@@ -123,7 +124,9 @@ def main():
         normalized_preds = predict(model, num_forecast, normalized_data, train_window)
         predictions = pp.denormalize_data(normalized_preds)
         prediction_dates = pp.get_date_list(
-            start=str(datetime.strptime(data_array[0][-1], "%Y-%m-%d") + timedelta(days=1)),
+            start=str(
+                datetime.strptime(data_array[0][-1], "%Y-%m-%d") + timedelta(days=1)
+            ),
             end=str(
                 datetime.strptime(data_array[0][-1], "%Y-%m-%d")
                 + timedelta(days=num_forecast)
@@ -148,22 +151,27 @@ def main():
         if download_new_file:
             pp.download_csv(url, csv_location)
 
-        # create in out sequences for locations
+        # create dictionaries of data needed for each location
         locations_dict = pp.process_csv_locations(csv_location)
         interpolated_dict = {}
+        scaler_dict = {}
         normalized_data = {}
         inout_locations = {}
         for location in locations_dict:
+            # get unique element array and counts of elements array
             unique = locations_dict[location][0]
             counts = locations_dict[location][1]
+            # pad with zeros for time series prediction
             interpolated_dict[location] = pp.interpolate_cases(
                 unique, counts, zeros=True
             )
 
+            # create a scaler for this location and normalize the data
+            scaler_dict[location] = pp.create_scaler()
             normalized_data[location] = pp.normalize_data(
-                np.array(interpolated_dict[location][1])
+                np.array(interpolated_dict[location][1]), scaler_dict[location]
             )
-            train_window = 7
+            train_window = 7 # 1 week
             inout_seq = pp.create_tensors(normalized_data[location], train_window)
             inout_locations[location] = inout_seq
 
@@ -172,14 +180,21 @@ def main():
             train_new_model = True
             if train_new_model:
                 model = train_model(inout_seq)
-                torch.save(model, model_base_location+location+".pt")
+                torch.save(model, model_base_location + location + ".pt")
             else:
-                model = torch.load(model_base_location+location+".pt")
+                model = torch.load(model_base_location + location + ".pt")
 
-            normalized_preds = predict(model, num_forecast, normalized_data[location], train_window)
-            predictions = pp.denormalize_data(normalized_preds)
+            # make predictions
+            normalized_preds = predict(
+                model, num_forecast, normalized_data[location], train_window
+            )
+            predictions = pp.denormalize_data(normalized_preds, scaler_dict[location])
+            # create date list for predictions
             prediction_dates = pp.get_date_list(
-                start=str(datetime.strptime(locations_dict[location][0][-1], "%Y-%m-%d") + timedelta(days=1)),
+                start=str(
+                    datetime.strptime(locations_dict[location][0][-1], "%Y-%m-%d")
+                    + timedelta(days=1)
+                ),
                 end=str(
                     datetime.strptime(locations_dict[location][0][-1], "%Y-%m-%d")
                     + timedelta(days=num_forecast)
@@ -187,17 +202,24 @@ def main():
             )
 
             # update case data with predictions
-            locations_dict[location][0] = np.append(locations_dict[location][0], prediction_dates)
-            locations_dict[location][1] = np.append(locations_dict[location][1], predictions)
+            locations_dict[location][0] = np.append(
+                locations_dict[location][0], prediction_dates
+            )
+            locations_dict[location][1] = np.append(
+                locations_dict[location][1], predictions
+            )
 
-        
+        # plot actual cases and predictions
         plt.close()
         for location in interpolated_dict:
-            plt.plot(interpolated_dict[location][0], interpolated_dict[location][1], label=location)
+            plt.plot(
+                interpolated_dict[location][0],
+                interpolated_dict[location][1],
+                label=location,
+            )
         plt.title("COVID-19 Cases Per Location")
         plt.legend()
         plt.show()
-
 
 
 if __name__ == "__main__":
