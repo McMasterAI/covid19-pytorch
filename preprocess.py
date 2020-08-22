@@ -115,11 +115,11 @@ def interpolate_cases(unique, counts, zeros=False):
     return complete_date_array
 
 
-# Global scaler variable so the normalize and denormalize functions can access it easily.
-scaler = MinMaxScaler(feature_range=(-1, 1))
+def create_scaler():
+    return MinMaxScaler(feature_range=(-1, 1))
 
 
-def normalize_data(to_normalize, reset_scaler=False):
+def normalize_data(to_normalize, scaler):
     """Normalizes data with the global scaler on a scale of -1 to 1.
 
     Args:
@@ -133,7 +133,7 @@ def normalize_data(to_normalize, reset_scaler=False):
     return normalized_data
 
 
-def denormalize_data(to_denormalize):
+def denormalize_data(to_denormalize, scaler):
     """Denormalizes previously normalized data using the global scaler.
 
     Args:
@@ -234,7 +234,8 @@ def main():
 
         print()
         print(np.array(data_array[1]))
-        normalized_data = normalize_data(np.array(data_array[1]))
+        scaler = create_scaler()
+        normalized_data = normalize_data(np.array(data_array[1]), scaler)
         train_window = 7
         inout_seq = create_tensors(normalized_data, train_window)
         print(inout_seq)
@@ -254,7 +255,8 @@ def main():
             plt.legend()
             plt.show()
 
-            normalized_data = normalize_data(np.array(interpolated_dict[location][1]))
+            scaler = create_scaler()
+            normalized_data = normalize_data(np.array(interpolated_dict[location][1]), scaler)
             train_window = 7
             inout_seq = create_tensors(normalized_data, train_window)
             inout_locations[location] = inout_seq
