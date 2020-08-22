@@ -56,7 +56,8 @@ def process_csv(save_location):
     return unique_elements, counts_elements
 
 
-def process_csv_locations(save_location):
+coordinates = {}
+def process_csv_locations(save_location, coordinates=coordinates):
     cr = csv.reader(open(save_location, "r"))
     next(cr)
     # Pull relevant data from the CSV in tuple form
@@ -66,6 +67,10 @@ def process_csv_locations(save_location):
             formatted[row[12]].append(row[2])
         else:
             formatted[row[12]] = [row[2]]
+            coordinates[row[12]] = {
+                "x": row[16],
+                "y": row[15]
+            }
 
     locations_dict = {}
     for location in formatted:
@@ -217,7 +222,7 @@ def main():
 
     download_csv(url, save_location)
 
-    each_location = False
+    each_location = True
     if not each_location:
         #perform for all of ontario
         unique, counts = process_csv(save_location)
