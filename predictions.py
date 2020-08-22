@@ -1,11 +1,13 @@
 import os
 from datetime import datetime, timedelta
+from time import sleep
 
-import preprocess as pp
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
-import matplotlib.pyplot as plt
+
+import preprocess as pp
 
 
 class LSTM(nn.Module):
@@ -43,7 +45,7 @@ def train_model(inout_seq):
     loss_function = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-    epochs = 500
+    epochs = 150
 
     for i in range(epochs):
         for seq, labels in inout_seq:
@@ -59,7 +61,7 @@ def train_model(inout_seq):
             single_loss.backward()
             optimizer.step()
 
-        if i % 25 == 1:
+        if i % 25 == 0:
             print(f"epoch: {i:3} loss: {single_loss.item():10.8f}")
 
     print(f"epoch: {i:3} loss: {single_loss.item():10.10f}")
@@ -96,47 +98,106 @@ def main():
     url = "https://data.ontario.ca/dataset/f4112442-bdc8-45d2-be3c-12efae72fb27/resource/455fd63b-603d-4608-8216-7d8647f43350/download/conposcovidloc.csv"
     csv_location = os.getcwd() + "/temp/conposcovidloc.csv"
     model_location = os.getcwd() + "/temp/model.pt"
+    model_base_location = os.getcwd() + "/temp/"
 
-    # get data and create inout sequences
-    download_new_file = False
-    if download_new_file:
-        pp.download_csv(url, csv_location)
-    unique, counts = pp.process_csv(csv_location)
-    data_array = pp.interpolate_cases(unique, counts)
-    normalized_data = pp.normalize_data(np.array(data_array[1]))
-    train_window = 30
-    inout_seq = pp.create_tensors(normalized_data, train_window)
+    locations = False
+    if not locations:
+        # get data and create inout sequences
+        download_new_file = True
+        if download_new_file:
+            pp.download_csv(url, csv_location)
+        unique, counts = pp.process_csv(csv_location)
+        data_array = pp.interpolate_cases(unique, counts)
+        normalized_data = pp.normalize_data(np.array(data_array[1]))
+        train_window = 7
+        inout_seq = pp.create_tensors(normalized_data, train_window)
 
-    # train model and make predictions
-    num_forecast = 7
-    train_new_model = False
-    if train_new_model:
-        model = train_model(inout_seq)
-        torch.save(model, model_location)
+        # train model and make predictions
+        num_forecast = 7
+        train_new_model = True
+        if train_new_model:
+            model = train_model(inout_seq)
+            torch.save(model, model_location)
+        else:
+            model = torch.load(model_location)
+        normalized_preds = predict(model, num_forecast, normalized_data, train_window)
+        predictions = pp.denormalize_data(normalized_preds)
+        prediction_dates = pp.get_date_list(
+            start=str(datetime.strptime(data_array[0][-1], "%Y-%m-%d") + timedelta(days=1)),
+            end=str(
+                datetime.strptime(data_array[0][-1], "%Y-%m-%d")
+                + timedelta(days=num_forecast)
+            ),
+        )
+
+        # update case data with predictions
+        data_array[0] = np.append(data_array[0], prediction_dates)
+        data_array[1] = np.append(data_array[1], predictions)
+
+        # plot original and predictions
+        plt.title("Predictions")
+        plt.ylabel("Confirmed Cases")
+        plt.grid(True)
+        plt.autoscale(axis="x", tight=True)
+        plt.plot(data_array[0], data_array[1])
+        plt.plot(prediction_dates, predictions)
+        plt.show()
     else:
-        model = torch.load(model_location)
-    normalized_preds = predict(model, num_forecast, normalized_data, train_window)
-    predictions = pp.denormalize_data(normalized_preds)
-    prediction_dates = pp.get_date_list(
-        start=str(datetime.strptime(data_array[0][-1], "%Y-%m-%d") + timedelta(days=1)),
-        end=str(
-            datetime.strptime(data_array[0][-1], "%Y-%m-%d")
-            + timedelta(days=num_forecast)
-        ),
-    )
+        # get data and create inout sequences
+        download_new_file = True
+        if download_new_file:
+            pp.download_csv(url, csv_location)
 
-    # update case data with predictions
-    data_array[0] = np.append(data_array[0], prediction_dates)
-    data_array[1] = np.append(data_array[1], predictions)
+        # create in out sequences for locations
+        locations_dict = pp.process_csv_locations(csv_location)
+        interpolated_dict = {}
+        normalized_data = {}
+        inout_locations = {}
+        for location in locations_dict:
+            unique = locations_dict[location][0]
+            counts = locations_dict[location][1]
+            interpolated_dict[location] = pp.interpolate_cases(
+                unique, counts, zeros=True
+            )
 
-    # plot original and predictions
-    plt.title("Predictions")
-    plt.ylabel("Confirmed Cases")
-    plt.grid(True)
-    plt.autoscale(axis="x", tight=True)
-    plt.plot(data_array[0], data_array[1])
-    plt.plot(prediction_dates, predictions)
-    plt.show()
+            normalized_data[location] = pp.normalize_data(
+                np.array(interpolated_dict[location][1])
+            )
+            train_window = 7
+            inout_seq = pp.create_tensors(normalized_data[location], train_window)
+            inout_locations[location] = inout_seq
+
+            # train model and make predictions for each location
+            num_forecast = 7
+            train_new_model = True
+            if train_new_model:
+                model = train_model(inout_seq)
+                torch.save(model, model_base_location+location+".pt")
+            else:
+                model = torch.load(model_base_location+location+".pt")
+
+            normalized_preds = predict(model, num_forecast, normalized_data[location], train_window)
+            predictions = pp.denormalize_data(normalized_preds)
+            prediction_dates = pp.get_date_list(
+                start=str(datetime.strptime(locations_dict[location][0][-1], "%Y-%m-%d") + timedelta(days=1)),
+                end=str(
+                    datetime.strptime(locations_dict[location][0][-1], "%Y-%m-%d")
+                    + timedelta(days=num_forecast)
+                ),
+            )
+
+            # update case data with predictions
+            locations_dict[location][0] = np.append(locations_dict[location][0], prediction_dates)
+            locations_dict[location][1] = np.append(locations_dict[location][1], predictions)
+
+        
+        plt.close()
+        for location in interpolated_dict:
+            plt.plot(interpolated_dict[location][0], interpolated_dict[location][1], label=location)
+        plt.title("COVID-19 Cases Per Location")
+        plt.legend()
+        plt.show()
+
 
 
 if __name__ == "__main__":
