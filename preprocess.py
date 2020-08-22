@@ -56,7 +56,29 @@ def process_csv(save_location):
     return unique_elements, counts_elements
 
 
-def interpolate_cases(unique, counts):
+def process_csv_locations(save_location):
+    cr = csv.reader(open(save_location, "r"))
+    next(cr)
+    # Pull relevant data from the CSV in tuple form
+    formatted = {}
+    for row in cr:
+        if row[12] in formatted:
+            formatted[row[12]].append(row[2])
+        else:
+            formatted[row[12]] = [row[2]]
+
+    locations_dict = {}
+    for location in formatted:
+        np_array = np.array(formatted[location])
+        unique, counts = np.unique(np_array, return_counts=True)
+        locations_dict[location] = [unique, counts]
+    
+    return locations_dict
+
+
+
+
+def interpolate_cases(unique, counts, zeros=False):
     """Interpolates number of confirmed cases for dates that did not have a recorded number of confirmed cases.
 
     Args:
@@ -69,16 +91,26 @@ def interpolate_cases(unique, counts):
     full_date_list = get_date_list(end=str(unique[-1]))
     complete_date_array = [[], []]
 
-    for date in full_date_list:
-        try:
-            complete_date_array[0].append(date)
-            complete_date_array[1].append(int(counts[np.where(unique == date)]))
-        except:
-            complete_date_array[1].append(np.nan)
-            continue
+    if zeros:
+        for date in full_date_list:
+            try:
+                complete_date_array[0].append(date)
+                complete_date_array[1].append(int(counts[np.where(unique == date)]))
+            except:
+                complete_date_array[1].append(0)
+                continue
 
-    s = pd.Series(complete_date_array[1])
-    complete_date_array[1] = s.interpolate(limit_direction="backward").to_list()
+    else:
+        for date in full_date_list:
+            try:
+                complete_date_array[0].append(date)
+                complete_date_array[1].append(int(counts[np.where(unique == date)]))
+            except:
+                complete_date_array[1].append(np.nan)
+                continue
+
+        s = pd.Series(complete_date_array[1])
+        complete_date_array[1] = s.interpolate(limit_direction="backward").to_list()
 
     return complete_date_array
 
@@ -184,25 +216,48 @@ def main():
     save_location = os.getcwd() + "/temp/conposcovidloc.csv"
 
     download_csv(url, save_location)
-    unique, counts = process_csv(save_location)
-    data_array = interpolate_cases(unique, counts)
 
-    # demonstrate rolling mean
-    plt.close()
-    plt.plot(data_array[0], data_array[1], label="counts")
-    plt.plot(
-        data_array[0], rolling_mean(data_array[1], window=7), label="means",
-    )
-    plt.title("rolling mean (window=7)")
-    plt.legend()
-    plt.show()
+    each_location = False
+    if not each_location:
+        #perform for all of ontario
+        unique, counts = process_csv(save_location)
+        data_array = interpolate_cases(unique, counts, zeros=True)
+        # demonstrate rolling mean
+        plt.close()
+        plt.plot(data_array[0], data_array[1], label="counts")
+        plt.plot(
+            data_array[0], rolling_mean(data_array[1], window=7), label="means",
+        )
+        plt.title("rolling mean (window=7)")
+        plt.legend()
+        plt.show()
 
-    print()
-    print(np.array(data_array[1]))
-    normalized_data = normalize_data(np.array(data_array[1]))
-    train_window = 7
-    inout_seq = create_tensors(normalized_data, train_window)
-    print(inout_seq)
+        print()
+        print(np.array(data_array[1]))
+        normalized_data = normalize_data(np.array(data_array[1]))
+        train_window = 7
+        inout_seq = create_tensors(normalized_data, train_window)
+        print(inout_seq)
+    else:
+        #perform for distinct locations
+        locations_dict = process_csv_locations(save_location)
+        interpolated_dict = {}
+        inout_locations = {}
+        for location in locations_dict:
+            unique = locations_dict[location][0]
+            counts = locations_dict[location][1]
+            interpolated_dict[location] = interpolate_cases(unique, counts, zeros=True)
+            plt.close()
+            plt.plot(interpolated_dict[location][0], interpolated_dict[location][1], label="counts")
+            plt.plot(interpolated_dict[location][0], rolling_mean(interpolated_dict[location][1], window=7), label="means")
+            plt.title(location)
+            plt.legend()
+            plt.show()
+
+            normalized_data = normalize_data(np.array(interpolated_dict[location][1]))
+            train_window = 7
+            inout_seq = create_tensors(normalized_data, train_window)
+            inout_locations[location] = inout_seq
 
 
 if __name__ == "__main__":
