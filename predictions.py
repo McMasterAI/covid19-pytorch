@@ -1,3 +1,4 @@
+import json
 import os
 from datetime import datetime, timedelta
 from time import sleep
@@ -94,13 +95,45 @@ def predict(model, num_pred, train_data_normalized, train_window):
     return test_inputs[-num_pred:]
 
 
+def convert_json(save_location, locations_dict, prediction_dates=[]):
+    new_dict = {}
+    for location in locations_dict:
+        current_loc = locations_dict[location]
+        for datenum, date in enumerate(current_loc[0]):
+            is_pred = True if date in prediction_dates else False
+            if date in new_dict:
+                new_dict[date].append(
+                    {
+                        "x": pp.coordinates[location]["x"],
+                        "y": pp.coordinates[location]["y"],
+                        "value": current_loc[1][datenum],
+                        "loc": location,
+                        "prediction": is_pred,
+                    }
+                )
+            else:
+                new_dict[date] = [
+                    {
+                        "x": pp.coordinates[location]["x"],
+                        "y": pp.coordinates[location]["y"],
+                        "value": current_loc[1][datenum],
+                        "loc": location,
+                        "prediction": is_pred,
+                    }
+                ]
+
+    with open(save_location + "covidlocpreds.json", "w+") as f:
+        return json.dump(new_dict, f)
+
+
 def main():
     url = "https://data.ontario.ca/dataset/f4112442-bdc8-45d2-be3c-12efae72fb27/resource/455fd63b-603d-4608-8216-7d8647f43350/download/conposcovidloc.csv"
     csv_location = os.getcwd() + "/temp/conposcovidloc.csv"
     model_location = os.getcwd() + "/temp/model.pt"
     model_base_location = os.getcwd() + "/temp/"
+    json_location = model_base_location
 
-    locations = False
+    locations = True
     if not locations:
         # get data and create inout sequences
         download_new_file = True
@@ -122,7 +155,7 @@ def main():
         else:
             model = torch.load(model_location)
         normalized_preds = predict(model, num_forecast, normalized_data, train_window)
-        predictions = pp.denormalize_data(normalized_preds)
+        predictions = pp.denormalize_data(normalized_preds, scaler)
         prediction_dates = pp.get_date_list(
             start=str(
                 datetime.strptime(data_array[0][-1], "%Y-%m-%d") + timedelta(days=1)
@@ -153,6 +186,7 @@ def main():
 
         # create dictionaries of data needed for each location
         locations_dict = pp.process_csv_locations(csv_location)
+        date_list, _ = pp.process_csv(csv_location)
         interpolated_dict = {}
         scaler_dict = {}
         normalized_data = {}
@@ -163,7 +197,7 @@ def main():
             counts = locations_dict[location][1]
             # pad with zeros for time series prediction
             interpolated_dict[location] = pp.interpolate_cases(
-                unique, counts, zeros=True
+                unique, counts, zeros=True, end=str(date_list[-1])
             )
 
             # create a scaler for this location and normalize the data
@@ -171,15 +205,14 @@ def main():
             normalized_data[location] = pp.normalize_data(
                 np.array(interpolated_dict[location][1]), scaler_dict[location]
             )
-            train_window = 7 # 1 week
-            inout_seq = pp.create_tensors(normalized_data[location], train_window)
-            inout_locations[location] = inout_seq
+            train_window = 7  # 1 week
+            inout_locations[location] = pp.create_tensors(normalized_data[location], train_window)
 
             # train model and make predictions for each location
             num_forecast = 7
-            train_new_model = True
+            train_new_model = False
             if train_new_model:
-                model = train_model(inout_seq)
+                model = train_model(inout_locations[location])
                 torch.save(model, model_base_location + location + ".pt")
             else:
                 model = torch.load(model_base_location + location + ".pt")
@@ -192,22 +225,27 @@ def main():
             # create date list for predictions
             prediction_dates = pp.get_date_list(
                 start=str(
-                    datetime.strptime(locations_dict[location][0][-1], "%Y-%m-%d")
+                    datetime.strptime(interpolated_dict[location][0][-1], "%Y-%m-%d")
                     + timedelta(days=1)
                 ),
                 end=str(
-                    datetime.strptime(locations_dict[location][0][-1], "%Y-%m-%d")
+                    datetime.strptime(interpolated_dict[location][0][-1], "%Y-%m-%d")
                     + timedelta(days=num_forecast)
                 ),
             )
 
             # update case data with predictions
-            locations_dict[location][0] = np.append(
-                locations_dict[location][0], prediction_dates
+            interpolated_dict[location][0] = np.append(
+                interpolated_dict[location][0], prediction_dates
             )
-            locations_dict[location][1] = np.append(
-                locations_dict[location][1], predictions
+            interpolated_dict[location][1] = np.append(
+                interpolated_dict[location][1], predictions
             )
+
+            interpolated_dict[location][0] = interpolated_dict[location][0].tolist()
+            interpolated_dict[location][1] = interpolated_dict[location][1].tolist()
+
+        convert_json(json_location, interpolated_dict, prediction_dates)
 
         # plot actual cases and predictions
         plt.close()

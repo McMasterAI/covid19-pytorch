@@ -56,7 +56,10 @@ def process_csv(save_location):
     return unique_elements, counts_elements
 
 
-def process_csv_locations(save_location):
+coordinates = {}
+
+
+def process_csv_locations(save_location, coordinates=coordinates):
     cr = csv.reader(open(save_location, "r"))
     next(cr)
     # Pull relevant data from the CSV in tuple form
@@ -66,19 +69,18 @@ def process_csv_locations(save_location):
             formatted[row[12]].append(row[2])
         else:
             formatted[row[12]] = [row[2]]
+            coordinates[row[12]] = {"x": row[16], "y": row[15]}
 
     locations_dict = {}
     for location in formatted:
         np_array = np.array(formatted[location])
         unique, counts = np.unique(np_array, return_counts=True)
         locations_dict[location] = [unique, counts]
-    
+
     return locations_dict
 
 
-
-
-def interpolate_cases(unique, counts, zeros=False):
+def interpolate_cases(unique, counts, zeros=False, end=None):
     """Interpolates number of confirmed cases for dates that did not have a recorded number of confirmed cases.
 
     Args:
@@ -88,7 +90,9 @@ def interpolate_cases(unique, counts, zeros=False):
     Returns:
         [[str], [int]]: Complete list of dates with corresponding case numbers.
     """
-    full_date_list = get_date_list(end=str(unique[-1]))
+    if not end:
+        end = str(unique[-1])
+    full_date_list = get_date_list(end=end)
     complete_date_array = [[], []]
 
     if zeros:
@@ -217,9 +221,9 @@ def main():
 
     download_csv(url, save_location)
 
-    each_location = False
+    each_location = True
     if not each_location:
-        #perform for all of ontario
+        # perform for all of ontario
         unique, counts = process_csv(save_location)
         data_array = interpolate_cases(unique, counts, zeros=True)
         # demonstrate rolling mean
@@ -240,7 +244,7 @@ def main():
         inout_seq = create_tensors(normalized_data, train_window)
         print(inout_seq)
     else:
-        #perform for distinct locations
+        # perform for distinct locations
         locations_dict = process_csv_locations(save_location)
         interpolated_dict = {}
         inout_locations = {}
@@ -249,14 +253,24 @@ def main():
             counts = locations_dict[location][1]
             interpolated_dict[location] = interpolate_cases(unique, counts, zeros=True)
             plt.close()
-            plt.plot(interpolated_dict[location][0], interpolated_dict[location][1], label="counts")
-            plt.plot(interpolated_dict[location][0], rolling_mean(interpolated_dict[location][1], window=7), label="means")
+            plt.plot(
+                interpolated_dict[location][0],
+                interpolated_dict[location][1],
+                label="counts",
+            )
+            plt.plot(
+                interpolated_dict[location][0],
+                rolling_mean(interpolated_dict[location][1], window=7),
+                label="means",
+            )
             plt.title(location)
             plt.legend()
             plt.show()
 
             scaler = create_scaler()
-            normalized_data = normalize_data(np.array(interpolated_dict[location][1]), scaler)
+            normalized_data = normalize_data(
+                np.array(interpolated_dict[location][1]), scaler
+            )
             train_window = 7
             inout_seq = create_tensors(normalized_data, train_window)
             inout_locations[location] = inout_seq
