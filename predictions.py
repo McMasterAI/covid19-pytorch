@@ -227,6 +227,7 @@ def main():
             )
             for location, (unique, counts) in locations_dict.items()
         ]
+        prediction_dates = []
         pool = torch.multiprocessing.Pool(multiprocessing.cpu_count() - 2)
         for location, dates, cases, prediction_dates, _ in pool.imap_unordered(
             _train, _inputs, chunksize=1
