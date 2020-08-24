@@ -206,7 +206,9 @@ def main():
                 np.array(interpolated_dict[location][1]), scaler_dict[location]
             )
             train_window = 7  # 1 week
-            inout_locations[location] = pp.create_tensors(normalized_data[location], train_window)
+            inout_locations[location] = pp.create_tensors(
+                normalized_data[location], train_window
+            )
 
             # train model and make predictions for each location
             num_forecast = 7
