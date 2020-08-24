@@ -177,6 +177,10 @@ def train(
     return location, inter_dates, inter_cases, prediction_dates, predictions
 
 
+def _train(kwargs):
+    return train(**kwargs)
+
+
 def main():
     url = "https://data.ontario.ca/dataset/f4112442-bdc8-45d2-be3c-12efae72fb27/resource/455fd63b-603d-4608-8216-7d8647f43350/download/conposcovidloc.csv"
     csv_location = os.path.join(os.getcwd(), "temp/conposcovidloc.csv")
@@ -184,7 +188,7 @@ def main():
     json_location = model_base_location
 
     # get data and create inout sequences
-    download_new_file = False
+    download_new_file = True
     if download_new_file:
         pp.download_csv(url, csv_location)
 
@@ -213,14 +217,20 @@ def main():
         interpolated_dict = {}
 
         # train (or load) models for each location and get predictions
-        for location, (unique, counts) in locations_dict.items():
-            location, dates, cases, prediction_dates, _ = train(
+        _inputs = [
+            dict(
                 location=location,
                 unique=unique,
                 counts=counts,
                 model_base_location=model_base_location,
                 date_list=date_list,
             )
+            for location, (unique, counts) in locations_dict.items()
+        ]
+        pool = torch.multiprocessing.Pool(multiprocessing.cpu_count() - 2)
+        for location, dates, cases, prediction_dates, _ in pool.imap_unordered(
+            _train, _inputs, chunksize=1
+        ):
             interpolated_dict[location] = {}
             interpolated_dict[location]["dates"] = dates
             interpolated_dict[location]["cases"] = cases
