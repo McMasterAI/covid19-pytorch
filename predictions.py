@@ -133,12 +133,13 @@ def main():
     model_base_location = os.getcwd() + "/temp/"
     json_location = model_base_location
 
+    # get data and create inout sequences
+    download_new_file = True
+    if download_new_file:
+        pp.download_csv(url, csv_location)
+
     locations = True
     if not locations:
-        # get data and create inout sequences
-        download_new_file = True
-        if download_new_file:
-            pp.download_csv(url, csv_location)
         unique, counts = pp.process_csv(csv_location)
         data_array = pp.interpolate_cases(unique, counts)
         scaler = pp.create_scaler()
@@ -179,11 +180,6 @@ def main():
         plt.plot(prediction_dates, predictions)
         plt.show()
     else:
-        # get data and create inout sequences
-        download_new_file = True
-        if download_new_file:
-            pp.download_csv(url, csv_location)
-
         # create dictionaries of data needed for each location
         locations_dict = pp.process_csv_locations(csv_location)
         date_list, _ = pp.process_csv(csv_location)
