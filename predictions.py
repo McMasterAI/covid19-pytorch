@@ -1,5 +1,6 @@
-import json
 import os
+import json
+import argparse
 import multiprocessing
 from datetime import datetime, timedelta
 
@@ -181,18 +182,23 @@ def _train(kwargs):
     return train(**kwargs)
 
 
-def main():
-    url = "https://data.ontario.ca/dataset/f4112442-bdc8-45d2-be3c-12efae72fb27/resource/455fd63b-603d-4608-8216-7d8647f43350/download/conposcovidloc.csv"
-    csv_location = os.path.join(os.getcwd(), "temp/conposcovidloc.csv")
-    model_base_location = os.path.join(os.getcwd(), "temp/")
+def main(
+    url,
+    csv_location,
+    model_base_location,
+    download_new_file,
+    locations,
+    train_new_model,
+    train_window,
+    num_forecast,
+    nproc,
+):
     json_location = model_base_location
 
     # get data and create inout sequences
-    download_new_file = True
     if download_new_file:
         pp.download_csv(url, csv_location)
 
-    locations = True
     if not locations:
         unique, counts = pp.process_csv(csv_location)
         _, dates, cases, pred_dates, pred_cases = train(
@@ -200,6 +206,9 @@ def main():
             unique=unique,
             counts=counts,
             model_base_location=model_base_location,
+            train_new_model=train_new_model,
+            train_window=train_window,
+            num_forecast=num_forecast,
         )
 
         # plot original and predictions
@@ -224,11 +233,14 @@ def main():
                 counts=counts,
                 model_base_location=model_base_location,
                 date_list=date_list,
+                train_new_model=train_new_model,
+                train_window=train_window,
+                num_forecast=num_forecast,
             )
             for location, (unique, counts) in locations_dict.items()
         ]
         prediction_dates = []
-        pool = torch.multiprocessing.Pool(multiprocessing.cpu_count() - 2)
+        pool = torch.multiprocessing.Pool(nproc)
         for location, dates, cases, prediction_dates, _ in pool.imap_unordered(
             _train, _inputs, chunksize=1
         ):
@@ -253,4 +265,25 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--url",
+        type=str,
+        default="https://data.ontario.ca/dataset/f4112442-bdc8-45d2-be3c-12efae72fb27/resource/455fd63b-603d-4608-8216-7d8647f43350/download/conposcovidloc.csv",
+    )
+    parser.add_argument(
+        "--csv_location",
+        type=str,
+        default=os.path.join(os.getcwd(), "temp/conposcovidloc.csv"),
+    )
+    parser.add_argument(
+        "--model_base_location", type=str, default=os.path.join(os.getcwd(), "temp/")
+    )
+    parser.add_argument("--download_new_file", type=bool, default=False)
+    parser.add_argument("--locations", type=bool, default=False)
+    parser.add_argument("--train_new_model", type=bool, default=False)
+    parser.add_argument("--train_window", type=int, default=7)
+    parser.add_argument("--num_forecast", type=int, default=7)
+    parser.add_argument("--nproc", type=int, default=multiprocessing.cpu_count() - 2)
+    args = parser.parse_args()
+    main(**args.__dict__)
