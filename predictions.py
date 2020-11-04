@@ -299,3 +299,6 @@ if __name__ == "__main__":
     parser.add_argument("--nproc", type=int, default=multiprocessing.cpu_count() - 2)
     args = parser.parse_args()
     main(**args.__dict__)
+
+
+print("Hello world!")
